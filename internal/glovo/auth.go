@@ -144,28 +144,66 @@ func (c *Client) LoginToken(refreshToken string) error {
 	return nil
 }
 
-// LoginPassword exchanges the user's own credentials for tokens. Endpoint shape
-// is a documented-shape placeholder pending reconciliation against a live
-// capture; the password is never stored.
+// LoginPassword exchanges the user's own email + password for tokens via
+// Glovo's OAuth password grant (POST /oauth/token, live-captured from the web
+// login). The password is sent once and never stored — only the returned
+// tokens are. The customer id is read from the access-token JWT.
 func (c *Client) LoginPassword(email, password string) error {
-	var resp struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		CustomerID   int64  `json:"customerId"`
+	body := map[string]string{"grantType": "password", "username": email, "password": password}
+	raw, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", c.apiBase+"/oauth/token", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+	for k, v := range map[string]string{
+		"glovo-api-version": "14", "glovo-app-platform": "web",
+		"glovo-app-type": "customer", "glovo-app-version": "v1.2413.0",
+		"glovo-app-context": "web", "glovo-app-development-state": "prod",
+		"glovo-language-code": "en",
+	} {
+		req.Header.Set(k, v)
 	}
-	status, err := c.doJSON("POST", c.apiBase+"/oauth/login",
-		map[string]string{"email": email, "password": password, "grantType": "password"}, &resp)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
-	if status == 403 || status == 401 {
-		return fmt.Errorf("login rejected (http %d) — Glovo may require a browser step; use: glovo login --token", status)
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if os.Getenv("GLOVO_DEBUG") != "" && resp.StatusCode != 200 {
+		fmt.Fprintf(os.Stderr, "glovo: POST /oauth/token -> %d\n%s\n", resp.StatusCode, string(rb))
 	}
-	if status != 200 || resp.AccessToken == "" {
-		return fmt.Errorf("login failed: http %d", status)
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return fmt.Errorf("login rejected (http %d) — check your email/password, or use: glovo login --access-token", resp.StatusCode)
 	}
-	c.saveAuth(&authSession{AccessToken: resp.AccessToken, RefreshToken: resp.RefreshToken, CustomerID: resp.CustomerID})
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("login failed: http %d", resp.StatusCode)
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(rb, &m); err != nil {
+		return fmt.Errorf("login: couldn't parse token response: %w", err)
+	}
+	access := firstStringField(m, "accessToken", "access_token", "token")
+	if access == "" {
+		return fmt.Errorf("login succeeded but no access token in the response")
+	}
+	refresh := firstStringField(m, "refreshToken", "refresh_token")
+	cid, _ := decodeCustomerID(access)
+	c.saveAuth(&authSession{AccessToken: access, RefreshToken: refresh, CustomerID: cid})
 	return nil
+}
+
+// firstStringField returns the first present key's value as a string (quotes
+// trimmed), tolerating either JSON string or number.
+func firstStringField(m map[string]json.RawMessage, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			s := strings.Trim(string(v), `"`)
+			if s != "" && s != "null" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 // LoginAccessToken stores a pasted access token directly, deriving the

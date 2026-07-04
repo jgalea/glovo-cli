@@ -27,13 +27,11 @@ func cmdLogin(args []string) error {
 
 	switch {
 	case email != "":
-		fmt.Fprint(os.Stderr, "Password: ")
-		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		pw, err := readTokenInput("Password: ")
 		if err != nil {
 			return err
 		}
-		if err := cl.LoginPassword(email, strings.TrimSpace(string(pw))); err != nil {
+		if err := cl.LoginPassword(email, pw); err != nil {
 			return err
 		}
 	case accessTokenMode:

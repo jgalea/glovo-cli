@@ -46,12 +46,13 @@ ENV:
 
 ## Auth
 
-`glovo login` supports two paths:
+`glovo login` supports three paths:
 
-- `--token` — paste your `glovo_refresh_token` from a logged-in browser session (DevTools → Application → Local Storage). Always works, no password involved.
-- `--email you@example.com` — logs in with email and password; the password is read from a hidden prompt and never stored, only the resulting tokens are.
+- `--email you@example.com` — logs in with your email and password via Glovo's OAuth token endpoint. The password is read from a hidden prompt (or piped: `pbpaste | glovo login --email you@example.com`), sent once, and never stored — only the returned tokens are. No browser needed. This is the simplest terminal login.
+- `--access-token` — paste your current access token (from a logged-in browser: DevTools → Application → Cookies → `glovo_auth_info`). The CLI reads your customer id straight out of the token. Short-lived; re-paste when it expires.
+- `--token` — paste your `glovo_refresh_token` from a logged-in browser's Local Storage. Best-effort (the refresh-exchange endpoint isn't fully verified); prefer `--email`.
 
-Tokens are cached in `~/.glovo/auth.json` (override the directory with `GLOVO_CONFIG_DIR`). The CLI never stores your password.
+Tokens are cached in `~/.glovo/auth.json` (override the directory with `GLOVO_CONFIG_DIR`). The CLI never stores your password. On a `401`, set `GLOVO_DEBUG=1` to see the server's response.
 
 ## Cart
 
