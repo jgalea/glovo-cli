@@ -1,0 +1,34 @@
+{
+ "data": {
+  "body": {
+   "data": {
+    "elements": [
+     {
+      "type": "STORE_CARD_V2",
+      "data": { "title": { "text": { "text": "Tacos Galos" } }, "slug": "tacos-galos-barcelona" },
+      "actions": [
+       { "trigger": "onImpression", "type": "PERSEUS_EVENT", "data": { "events": [
+        { "name": "shop_impressions.loaded", "data": {
+          "shopId": "581058", "shopRating": "95%",
+          "promisedDeliveryTimeRangeLower": "15", "promisedDeliveryTimeRangeUpper": "25",
+          "shopDeliveryFee": "1.49", "shopDeliveryFeeCurrency": "EUR",
+          "shopIsOpen": "true", "shopAvailabilityStatus": "Asap" } } ] } }
+      ]
+     },
+     {
+      "type": "STORE_CARD_V2",
+      "data": { "title": { "text": { "text": "Birreria Dos Coyotes" } }, "slug": "dos-coyotes-barcelona" },
+      "actions": [
+       { "trigger": "onImpression", "type": "PERSEUS_EVENT", "data": { "events": [
+        { "name": "shop_impressions.loaded", "data": {
+          "shopId": "999001", "shopRating": "100%",
+          "promisedDeliveryTimeRangeLower": "20", "promisedDeliveryTimeRangeUpper": "35",
+          "shopDeliveryFee": "0", "shopDeliveryFeeCurrency": "EUR",
+          "shopIsOpen": "false", "shopAvailabilityStatus": "Closed" } } ] } }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}
