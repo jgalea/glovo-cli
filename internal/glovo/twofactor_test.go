@@ -56,7 +56,7 @@ func TestLoginPasswordReturnsTwoFactorChallenge(t *testing.T) {
 
 func TestLoginPasswordStoresNestedAccessSession(t *testing.T) {
 	t.Setenv("GLOVO_CONFIG_DIR", t.TempDir())
-	token := fakeJWT(`"{\"userId\":391738,\"deviceId\":\"d\",\"grantType\":\"g\"}"`)
+	token := fakeJWT(`"{\"userId\":4242,\"deviceId\":\"d\",\"grantType\":\"g\"}"`)
 	srv := loginServer(t, map[string]string{
 		"/oauth/token": `{"access":{"accessToken":"` + token + `","refreshToken":"RT"}}`,
 	})
@@ -68,7 +68,7 @@ func TestLoginPasswordStoresNestedAccessSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := c.loadAuth()
-	if s == nil || s.AccessToken != token || s.RefreshToken != "RT" || s.CustomerID != 391738 {
+	if s == nil || s.AccessToken != token || s.RefreshToken != "RT" || s.CustomerID != 4242 {
 		t.Fatalf("session = %+v", s)
 	}
 }

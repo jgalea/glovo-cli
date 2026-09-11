@@ -62,7 +62,7 @@ func TestCitySlugSkipsTownsThatServeNoCity(t *testing.T) {
 	c := NewClient(nil)
 	c.apiBase = srv.URL
 	c.webBase = srv.URL
-	slug, err := c.CitySlug(38.699, -9.428, "LIS", "PT")
+	slug, err := c.CitySlug(38.7223, -9.1393, "LIS", "PT")
 	if err != nil || slug != "lisboa" {
 		t.Fatalf("slug = %q err = %v", slug, err)
 	}
@@ -73,7 +73,7 @@ func TestCitySlugSkipsTownsThatServeNoCity(t *testing.T) {
 	cached := NewClient(nil)
 	cached.apiBase = dead.URL
 	cached.webBase = dead.URL
-	if slug, err := cached.CitySlug(38.699, -9.428, "LIS", "PT"); err != nil || slug != "lisboa" {
+	if slug, err := cached.CitySlug(38.7223, -9.1393, "LIS", "PT"); err != nil || slug != "lisboa" {
 		t.Fatalf("cached slug = %q err = %v", slug, err)
 	}
 }
@@ -86,7 +86,7 @@ func TestCitySlugErrorsWhenNothingServesTheCode(t *testing.T) {
 	c := NewClient(nil)
 	c.apiBase = srv.URL
 	c.webBase = srv.URL
-	if _, err := c.CitySlug(38.699, -9.428, "LIS", "PT"); err == nil {
+	if _, err := c.CitySlug(38.7223, -9.1393, "LIS", "PT"); err == nil {
 		t.Fatal("expected an error naming --city-slug")
 	} else if !strings.Contains(err.Error(), "--city-slug") {
 		t.Fatalf("err = %v", err)
@@ -94,7 +94,7 @@ func TestCitySlugErrorsWhenNothingServesTheCode(t *testing.T) {
 }
 
 func TestDeliveryAddressCookieCarriesThePoint(t *testing.T) {
-	cookie := deliveryAddressCookie(Location{Lat: 38.6992821, Lng: -9.4285423, CityCode: "LIS", CountryCode: "PT"})
+	cookie := deliveryAddressCookie(Location{Lat: 38.7223, Lng: -9.1393, CityCode: "LIS", CountryCode: "PT"})
 	name, value, ok := strings.Cut(cookie, "=")
 	if !ok || name != "glovo_delivery_address" {
 		t.Fatalf("cookie = %q", cookie)
@@ -107,7 +107,7 @@ func TestDeliveryAddressCookieCarriesThePoint(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &addr); err != nil {
 		t.Fatalf("cookie value is not JSON: %v", err)
 	}
-	if addr["cityCode"] != "LIS" || addr["countryCode"] != "PT" || addr["latitude"] != 38.6992821 {
+	if addr["cityCode"] != "LIS" || addr["countryCode"] != "PT" || addr["latitude"] != 38.7223 {
 		t.Fatalf("addr = %v", addr)
 	}
 }
