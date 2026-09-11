@@ -77,13 +77,13 @@ func (c *Client) CitySlug(lat, lng float64, cityCode, countryCode string) (strin
 // specific first, filtered against the country's published city list when that
 // is available.
 func (c *Client) citySlugCandidates(lat, lng float64, countryCode string) ([]string, error) {
-	addr, err := c.geocodeComponents(lat, lng)
+	addr, err := c.geocode(lat, lng)
 	if err != nil {
 		return nil, err
 	}
 	var names []string
 	for _, k := range []string{"locality", "administrative_area_level_2", "administrative_area_level_1", "postal_town"} {
-		if v := addr[k]; v != "" {
+		if v := addr.Components[k]; v != "" {
 			names = append(names, v)
 		}
 	}
@@ -110,37 +110,47 @@ func (c *Client) citySlugCandidates(lat, lng float64, countryCode string) ([]str
 	return filtered, nil
 }
 
-// ResolveCityCodes returns the city and country codes Glovo serves a delivery
-// point from, so callers only have to know the coordinates.
-func (c *Client) ResolveCityCodes(lat, lng float64) (cityCode, countryCode string, err error) {
-	u := fmt.Sprintf("%s/v3/addresslookup/pub/coordinates?latitude=%g&longitude=%g&allowFallback=true", c.apiBase, lat, lng)
-	var resp struct {
-		CityCode    string `json:"cityCode"`
-		CountryCode string `json:"countryCode"`
-	}
-	status, err := c.doJSON("GET", u, nil, &resp)
+// ResolveLocation fills in whatever the caller didn't supply, so a delivery
+// point only has to be given as coordinates.
+func (c *Client) ResolveLocation(loc Location) (Location, error) {
+	addr, err := c.geocode(loc.Lat, loc.Lng)
 	if err != nil {
-		return "", "", err
+		return loc, err
 	}
-	if status != 200 || resp.CityCode == "" {
-		return "", "", fmt.Errorf("couldn't resolve a Glovo city for %g,%g (http %d)", lat, lng, status)
+	if addr.CityCode == "" {
+		return loc, fmt.Errorf("Glovo serves no city at %g,%g", loc.Lat, loc.Lng)
 	}
-	return resp.CityCode, resp.CountryCode, nil
+	if loc.CityCode == "" {
+		loc.CityCode = addr.CityCode
+	}
+	if loc.CountryCode == "" {
+		loc.CountryCode = addr.CountryCode
+	}
+	loc.PlaceID = addr.PlaceID
+	loc.Label = addr.Title
+	loc.CityName = addr.Components["administrative_area_level_1"]
+	return loc, nil
 }
 
-func (c *Client) geocodeComponents(lat, lng float64) (map[string]string, error) {
+type geocoded struct {
+	PlaceID     string            `json:"placeId"`
+	Title       string            `json:"title"`
+	CityCode    string            `json:"cityCode"`
+	CountryCode string            `json:"countryCode"`
+	Components  map[string]string `json:"addressComponents"`
+}
+
+func (c *Client) geocode(lat, lng float64) (geocoded, error) {
 	u := fmt.Sprintf("%s/v3/addresslookup/pub/coordinates?latitude=%g&longitude=%g&allowFallback=true", c.apiBase, lat, lng)
-	var resp struct {
-		Components map[string]string `json:"addressComponents"`
-	}
+	var resp geocoded
 	status, err := c.doJSON("GET", u, nil, &resp)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("address lookup: http %d", status)
+		return resp, fmt.Errorf("address lookup: http %d", status)
 	}
-	return resp.Components, nil
+	return resp, nil
 }
 
 func (c *Client) countryCitySlugs(countryCode string) ([]string, error) {
@@ -170,7 +180,7 @@ var cityCodeRe = regexp.MustCompile(`cityCode\\?"\s*:\s*\\?"([A-Z]{2,5})`)
 // page of its own, or an SEO page for a town Glovo folds into a bigger city,
 // carries no code and is not an error.
 func (c *Client) cityPageCode(country, slug string) (string, error) {
-	html, status, err := c.getPage(fmt.Sprintf("%s/en/%s/%s", c.webBase, country, url.PathEscape(slug)), "")
+	html, status, err := c.getPage(fmt.Sprintf("%s/en/%s/%s", c.webBase, country, url.PathEscape(slug)), "", false)
 	if err != nil {
 		return "", err
 	}

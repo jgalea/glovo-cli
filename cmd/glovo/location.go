@@ -42,19 +42,7 @@ func (l *locFlags) resolve(cl *glovo.Client) (glovo.Location, error) {
 		CountryCode: l.country,
 		CitySlug:    l.citySlug,
 	}
-	if loc.CityCode == "" || loc.CountryCode == "" {
-		city, country, err := cl.ResolveCityCodes(loc.Lat, loc.Lng)
-		if err != nil {
-			return loc, err
-		}
-		if loc.CityCode == "" {
-			loc.CityCode = city
-		}
-		if loc.CountryCode == "" {
-			loc.CountryCode = country
-		}
-	}
-	return loc, nil
+	return cl.ResolveLocation(loc)
 }
 
 func resolveCoord(flagVal float64, envVar string, def float64) float64 {

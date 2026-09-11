@@ -10,11 +10,15 @@ import (
 )
 
 // Location is the delivery point a store is browsed and ordered from.
+// Everything but the coordinates is filled in by ResolveLocation.
 type Location struct {
 	Lat, Lng    float64
 	CityCode    string // "LIS"
 	CountryCode string // "PT"
-	CitySlug    string // "lisboa"; resolved from the coordinates when empty
+	CitySlug    string // "lisboa", the city segment of Glovo's store URLs
+	CityName    string
+	Label       string // the geocoded street address
+	PlaceID     string
 }
 
 // StoreMenu fetches and parses the SSR store-detail page for a store,
@@ -40,7 +44,9 @@ func (c *Client) StoreMenu(slug string, loc Location) (*Menu, error) {
 		if wait > 0 {
 			time.Sleep(wait)
 		}
-		html, err := c.getHTML(u, cookie)
+		// Retries close the connection so they are not pinned to the server
+		// that just answered with the shell.
+		html, _, err := c.getPage(u, cookie, attempt > 0)
 		if err != nil {
 			return nil, err
 		}
@@ -61,6 +67,11 @@ func deliveryAddressCookie(loc Location) string {
 		"longitude":   loc.Lng,
 		"cityCode":    loc.CityCode,
 		"countryCode": loc.CountryCode,
+		"cityName":    loc.CityName,
+		"text":        loc.Label,
+		"details":     "",
+		"placeId":     loc.PlaceID,
+		"postalCode":  nil,
 		"isVerified":  true,
 	}
 	b, err := json.Marshal(addr)

@@ -83,7 +83,7 @@ func baseHeaders() map[string]string {
 // a request that carries a delivery address, so cookie carries the
 // glovo_delivery_address the page should be rendered against.
 func (c *Client) getHTML(url, cookie string) (string, error) {
-	body, status, err := c.getPage(url, cookie)
+	body, status, err := c.getPage(url, cookie, false)
 	if err != nil {
 		return "", err
 	}
@@ -94,9 +94,12 @@ func (c *Client) getHTML(url, cookie string) (string, error) {
 }
 
 // getPage is getHTML without treating a non-2xx as an error, for callers that
-// expect misses (a city slug that has no Glovo page 404s).
-func (c *Client) getPage(url, cookie string) (string, int, error) {
+// expect misses (a city slug that has no Glovo page 404s). freshConn closes the
+// connection afterwards, so a retry is routed again rather than pinned to the
+// server that just answered badly.
+func (c *Client) getPage(url, cookie string, freshConn bool) (string, int, error) {
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Close = freshConn
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "en")
