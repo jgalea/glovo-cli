@@ -59,10 +59,18 @@ func (c *Client) storeWallHeaders(lat, lng float64, cityCode, countryCode string
 type storeCard struct {
 	Type string `json:"type"`
 	Data struct {
+		// A card's title comes in two shapes: plain text, or text alongside a
+		// badge (the crown Glovo puts on its top-rated stores), which nests the
+		// name one level deeper.
 		Title struct {
 			Text struct {
 				Text string `json:"text"`
 			} `json:"text"`
+			TextWithIconBlob struct {
+				Text struct {
+					Text string `json:"text"`
+				} `json:"text"`
+			} `json:"textWithIconBlob"`
 		} `json:"title"`
 		Slug string `json:"slug"`
 	} `json:"data"`
@@ -74,6 +82,13 @@ type storeCard struct {
 			} `json:"events"`
 		} `json:"data"`
 	} `json:"actions"`
+}
+
+func (card storeCard) name() string {
+	if t := card.Data.Title.Text.Text; t != "" {
+		return t
+	}
+	return card.Data.Title.TextWithIconBlob.Text.Text
 }
 
 func (card storeCard) impression() map[string]string {
@@ -111,7 +126,7 @@ func parseStoreWall(body []byte) []Store {
 			continue
 		}
 		ev := card.impression()
-		s := Store{Slug: card.Data.Slug, Name: card.Data.Title.Text.Text}
+		s := Store{Slug: card.Data.Slug, Name: card.name()}
 		s.ID, _ = strconv.ParseInt(ev["shopId"], 10, 64)
 		s.Rating = parsePercent(ev["shopRating"])
 		s.RatingCount = atoiSafe(ev["numberOfRatedOrders"])

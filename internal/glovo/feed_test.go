@@ -97,3 +97,27 @@ func TestSearchSendsAuthAndLocationHeaders(t *testing.T) {
 		t.Fatalf("searchQuery = %q", gotQuery)
 	}
 }
+
+func TestParseStoreWallReadsBadgedTitles(t *testing.T) {
+	// Glovo's top-rated stores carry a crown badge, which nests the name under
+	// textWithIconBlob instead of text.
+	body := []byte(`{"data":{"body":{"data":{"elements":[
+	  {"type":"STORE_CARD_V2","data":{"slug":"plain-lis","title":{"customType":"TEXT","text":{"text":"Plain Store"}}},
+	   "actions":[{"trigger":"onImpression","data":{"events":[{"data":{"shopId":"1","shopRating":"97%","numberOfRatedOrders":"41"}}]}}]},
+	  {"type":"STORE_CARD_V2","data":{"slug":"crowned-lis","title":{"customType":"TEXT_WITH_ICON_BLOB","textWithIconBlob":{"text":{"text":"Crowned Store"}}}},
+	   "actions":[{"trigger":"onImpression","data":{"events":[{"data":{"shopId":"2","shopRating":"100%","numberOfRatedOrders":"116"}}]}}]}
+	]}}}}`)
+	stores := parseStoreWall(body)
+	if len(stores) != 2 {
+		t.Fatalf("got %d stores", len(stores))
+	}
+	if stores[0].Name != "Plain Store" {
+		t.Errorf("plain title = %q", stores[0].Name)
+	}
+	if stores[1].Name != "Crowned Store" {
+		t.Errorf("badged title = %q", stores[1].Name)
+	}
+	if stores[1].RatingCount != 116 {
+		t.Errorf("rating count = %d", stores[1].RatingCount)
+	}
+}
