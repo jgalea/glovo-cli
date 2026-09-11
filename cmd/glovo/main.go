@@ -86,7 +86,10 @@ USAGE:
 COMMANDS:
   search <query...>         find restaurants near your delivery address
   menu <store-slug|id>      list a restaurant's categories and items
-  login [--token|--email a|--access-token]  authenticate with your OWN Glovo account
+  login [--email a|--token|--access-token]  authenticate with your OWN Glovo account
+                            --email logs in with your password, then prompts for
+                            the verification code Glovo texts you
+                            --token pastes a glovo_refresh_token from a browser
                             --access-token pastes your current access token; the
                             CLI derives your customer id from it (or pass --customer-id)
   cart get <store-slug>     show your basket for a store
@@ -96,12 +99,17 @@ COMMANDS:
   order <store-id>          dry-run: restaurant, items, fees, total, ETA
   order <store-id> --confirm  place the order (requires captured checkout)
 
+LOCATION FLAGS (search, menu, cart):
+  --lat, --lng              delivery coordinates (or GLOVO_LAT/GLOVO_LNG)
+  --city, --country         city/country codes; resolved from the coordinates
+  --city-slug               city segment of store URLs, e.g. lisboa
+
 COMMON FLAGS (after the command):
   --json                    emit raw JSON (data → stdout, logs → stderr)
   --toon                    emit TOON (fewer tokens; for agents)
 
 ENV:
-  GLOVO_CONFIG_DIR          override ~/.glovo (token cache)
+  GLOVO_CONFIG_DIR          override ~/.glovo (session, device and city cache)
 
   version | help
 

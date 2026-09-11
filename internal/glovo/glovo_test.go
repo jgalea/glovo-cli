@@ -28,13 +28,18 @@ func TestDoJSONDecodes(t *testing.T) {
 }
 
 func TestGetHTMLReturnsBody(t *testing.T) {
+	var gotCookie string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCookie = r.Header.Get("Cookie")
 		_, _ = w.Write([]byte("<html>hi</html>"))
 	}))
 	defer srv.Close()
 	c := NewClient(nil)
-	body, err := c.getHTML(srv.URL)
+	body, err := c.getHTML(srv.URL, "glovo_delivery_address=x")
 	if err != nil || body != "<html>hi</html>" {
 		t.Fatalf("body=%q err=%v", body, err)
+	}
+	if gotCookie != "glovo_delivery_address=x" {
+		t.Fatalf("cookie = %q", gotCookie)
 	}
 }

@@ -11,7 +11,7 @@ func cmdOrder(args []string) error {
 	fs, c := newCommonFlags("order")
 	var confirm bool
 	fs.BoolVar(&confirm, "confirm", false, "actually place the order (charges your saved payment method)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {

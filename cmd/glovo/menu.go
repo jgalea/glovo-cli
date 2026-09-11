@@ -9,15 +9,20 @@ import (
 
 func cmdMenu(args []string) error {
 	fs, c := newCommonFlags("menu")
-	if err := fs.Parse(args); err != nil {
+	loc := addLocationFlags(fs)
+	if err := parseArgs(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: glovo menu <store-slug>")
+		return fmt.Errorf("usage: glovo menu [flags] <store-slug>")
 	}
 	slug := fs.Arg(0)
 	cl := glovo.NewClient(stderrLogf)
-	menu, err := cl.StoreMenu(defaultCity, slug)
+	where, err := loc.resolve(cl)
+	if err != nil {
+		return err
+	}
+	menu, err := cl.StoreMenu(slug, where)
 	if err != nil {
 		return err
 	}

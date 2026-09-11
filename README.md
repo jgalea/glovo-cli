@@ -26,7 +26,7 @@ USAGE:
 COMMANDS:
   search <query...>         find restaurants near your delivery address
   menu <store-slug|id>      list a restaurant's categories and items
-  login [--token|--email a] authenticate with your OWN Glovo account
+  login [--email a|--token|--access-token]  authenticate with your OWN account
   cart get <store-id>       show your basket for a store
   cart add <store-id> <product-id> [qty]
   cart set <store-id> <product-id> <qty>   (0 removes)
@@ -34,36 +34,43 @@ COMMANDS:
   order <store-id>          dry-run: restaurant, items, fees, total, ETA
   order <store-id> --confirm  place the order (requires captured checkout)
 
+LOCATION FLAGS (search, menu, cart):
+  --lat, --lng              delivery coordinates (or GLOVO_LAT/GLOVO_LNG)
+  --city, --country         city/country codes; resolved from the coordinates
+  --city-slug               city segment of store URLs, e.g. lisboa
+
 COMMON FLAGS (after the command):
   --json                    emit raw JSON (data → stdout, logs → stderr)
   --toon                    emit TOON (fewer tokens; for agents)
 
 ENV:
-  GLOVO_CONFIG_DIR          override ~/.glovo (token cache)
+  GLOVO_CONFIG_DIR          override ~/.glovo (session, device and city cache)
 ```
 
-`search` calls Glovo's authenticated store-search API, so it needs `glovo login` first, plus delivery coordinates: `--lat`/`--lng`, or `GLOVO_LAT`/`GLOVO_LNG`, or it falls back to Barcelona centre (`--city`/`--country` default to `BCN`/`ES`). `menu <store-slug>` needs no login — it reads Glovo's public, server-rendered store page.
+Every command needs to know where you are ordering from: pass `--lat`/`--lng`, set `GLOVO_LAT`/`GLOVO_LNG`, or accept the Barcelona-centre fallback. The city and country codes, and the city segment of Glovo's store URLs, are looked up from those coordinates and cached, so `--city`, `--country` and `--city-slug` are only there for when you want to override the lookup.
+
+`search` calls Glovo's authenticated store-search API and needs `glovo login` first. `menu <store-slug>` needs no account.
 
 ## Auth
 
 `glovo login` supports three paths:
 
-- `--email you@example.com` — logs in with your email and password via Glovo's OAuth token endpoint. The password is read from a hidden prompt (or piped: `pbpaste | glovo login --email you@example.com`), sent once, and never stored — only the returned tokens are. No browser needed. This is the simplest terminal login.
-- `--access-token` — paste your current access token (from a logged-in browser: DevTools → Application → Cookies → `glovo_auth_info`). The CLI reads your customer id straight out of the token. Short-lived; re-paste when it expires.
-- `--token` — paste your `glovo_refresh_token` from a logged-in browser's Local Storage. Best-effort (the refresh-exchange endpoint isn't fully verified); prefer `--email`.
+- `--email you@example.com` — logs in with your email and password. The password is read from a hidden prompt (or piped: `pbpaste | glovo login --email you@example.com`), sent once, and never stored. Glovo verifies any device it hasn't seen before, so the first login on a machine texts you a code and the CLI prompts for it. This is the simplest terminal login.
+- `--token` — paste your `glovo_refresh_token` from a logged-in browser's Local Storage. No code needed, and refresh tokens are long-lived.
+- `--access-token` — paste your current access token (from a logged-in browser: DevTools → Application → Cookies → `glovo_auth_info`). Good for about an hour and can't be refreshed, so prefer one of the others.
 
-Tokens are cached in `~/.glovo/auth.json` (override the directory with `GLOVO_CONFIG_DIR`). The CLI never stores your password. On a `401`, set `GLOVO_DEBUG=1` to see the server's response.
+Sessions are cached in `~/.glovo/auth.json` and refreshed automatically when the access token expires; `~/.glovo/device.json` holds the device registration that Glovo ties the verification to, so you only get texted a code once per machine. Override the directory with `GLOVO_CONFIG_DIR`. The CLI never stores your password. On a `401`, set `GLOVO_DEBUG=1` to see the server's response.
 
 ## Cart
 
 `cart get|add|set|clear` fills your own basket through Glovo's authenticated API:
 
 ```bash
-glovo login
-glovo cart add 123456 789012 2   # add 2× a product to a store's basket
-glovo cart get 123456
-glovo cart set 123456 789012 0   # remove it
-glovo cart clear 123456
+glovo login --email you@example.com
+glovo cart add na-pizza-lis 41745203922 2   # add 2× a product to a store's basket
+glovo cart get na-pizza-lis
+glovo cart set na-pizza-lis 41745203922 0   # remove it
+glovo cart clear na-pizza-lis
 ```
 
 The CLI fills the cart. It never places an order on its own.

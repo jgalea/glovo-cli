@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 
 	"github.com/jgalea/glovo-cli/internal/glovo"
@@ -14,7 +13,8 @@ const storeCategoryDefault = 1
 
 func cmdCart(args []string) error {
 	fs, c := newCommonFlags("cart")
-	if err := fs.Parse(args); err != nil {
+	loc := addLocationFlags(fs)
+	if err := parseArgs(fs, args); err != nil {
 		return err
 	}
 	rest := fs.Args()
@@ -22,12 +22,13 @@ func cmdCart(args []string) error {
 		return fmt.Errorf("usage: glovo cart get|add|set|clear <store-slug> [product-id] [qty]")
 	}
 	cl := glovo.NewClient(stderrLogf)
-	// The authenticated basket endpoints require the delivery location's
-	// glovo-* headers. Resolve coords the same way search does (flags/env/
-	// default Barcelona); city/country default to BCN/ES.
-	cl.SetLocation("BCN", "ES",
-		resolveCoord(math.NaN(), "GLOVO_LAT", defaultSearchLat),
-		resolveCoord(math.NaN(), "GLOVO_LNG", defaultSearchLng))
+	where, err := loc.resolve(cl)
+	if err != nil {
+		return err
+	}
+	// The authenticated basket endpoints reject a POST that doesn't say where
+	// the order would be delivered.
+	cl.SetLocation(where.CityCode, where.CountryCode, where.Lat, where.Lng)
 	sub := rest[0]
 
 	switch sub {
@@ -35,7 +36,7 @@ func cmdCart(args []string) error {
 		if len(rest) < 2 {
 			return fmt.Errorf("usage: glovo cart get <store-slug>")
 		}
-		menu, err := cl.StoreMenu(defaultCity, rest[1])
+		menu, err := cl.StoreMenu(rest[1], where)
 		if err != nil {
 			return err
 		}
@@ -63,7 +64,7 @@ func cmdCart(args []string) error {
 		} else if sub == "set" {
 			return fmt.Errorf("usage: glovo cart set <store-slug> <product-id> <qty>")
 		}
-		menu, err := cl.StoreMenu(defaultCity, rest[1])
+		menu, err := cl.StoreMenu(rest[1], where)
 		if err != nil {
 			return err
 		}
@@ -87,7 +88,7 @@ func cmdCart(args []string) error {
 		if len(rest) < 2 {
 			return fmt.Errorf("usage: glovo cart clear <store-slug>")
 		}
-		menu, err := cl.StoreMenu(defaultCity, rest[1])
+		menu, err := cl.StoreMenu(rest[1], where)
 		if err != nil {
 			return err
 		}

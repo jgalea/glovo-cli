@@ -1,24 +1,73 @@
 package glovo
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
+	"time"
 )
 
-// StoreMenu fetches and parses the cold (no-auth) SSR store-detail page for a
-// store, returning its menu grouped by category plus the store identity
-// (storeId, storeAddressId) the basket POST needs.
-func (c *Client) StoreMenu(city, slug string) (*Menu, error) {
-	u := fmt.Sprintf("%s/en/es/%s/stores/%s", c.webBase, city, slug)
-	html, err := c.getHTML(u)
+// Location is the delivery point a store is browsed and ordered from.
+type Location struct {
+	Lat, Lng    float64
+	CityCode    string // "LIS"
+	CountryCode string // "PT"
+	CitySlug    string // "lisboa"; resolved from the coordinates when empty
+}
+
+// StoreMenu fetches and parses the SSR store-detail page for a store,
+// returning its menu grouped by category plus the store identity (storeId,
+// storeAddressId) the basket POST needs. No account is needed, but the page
+// renders a menu only against a delivery address, which the cookie supplies.
+func (c *Client) StoreMenu(slug string, loc Location) (*Menu, error) {
+	citySlug := loc.CitySlug
+	if citySlug == "" {
+		resolved, err := c.CitySlug(loc.Lat, loc.Lng, loc.CityCode, loc.CountryCode)
+		if err != nil {
+			return nil, err
+		}
+		citySlug = resolved
+	}
+	u := fmt.Sprintf("%s/en/%s/%s/stores/%s", c.webBase, strings.ToLower(loc.CountryCode), url.PathEscape(citySlug), url.PathEscape(slug))
+	cookie := deliveryAddressCookie(loc)
+	// Glovo serves the address-picker shell in bursts for pages it renders
+	// fine moments later, so an unparseable page is retried with a pause
+	// rather than reported as a missing menu.
+	backoff := []time.Duration{0, 700 * time.Millisecond, 2 * time.Second}
+	for attempt, wait := range backoff {
+		if wait > 0 {
+			time.Sleep(wait)
+		}
+		html, err := c.getHTML(u, cookie)
+		if err != nil {
+			return nil, err
+		}
+		if menu := parseMenu(html); menu != nil {
+			return menu, nil
+		}
+		c.log("no menu in %s (attempt %d/%d)", u, attempt+1, len(backoff))
+	}
+	return nil, fmt.Errorf("no menu on %s — check the store slug, or point --city-slug at the store's own city", u)
+}
+
+// deliveryAddressCookie is the cookie the web app sets when you pick an
+// address. Without it Glovo serves the address-picker shell in place of the
+// store's menu.
+func deliveryAddressCookie(loc Location) string {
+	addr := map[string]any{
+		"latitude":    loc.Lat,
+		"longitude":   loc.Lng,
+		"cityCode":    loc.CityCode,
+		"countryCode": loc.CountryCode,
+		"isVerified":  true,
+	}
+	b, err := json.Marshal(addr)
 	if err != nil {
-		return nil, err
+		return ""
 	}
-	menu := parseMenu(html)
-	if menu == nil {
-		return nil, fmt.Errorf("couldn't parse Glovo's menu page, the site layout may have changed")
-	}
-	return menu, nil
+	return "glovo_delivery_address=" + url.QueryEscape(string(b))
 }
 
 // parseMenu extracts the store's menu from the store-detail page's SSR

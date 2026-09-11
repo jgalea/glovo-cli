@@ -20,12 +20,7 @@ type authSession struct {
 }
 
 func (c *Client) authPath() string {
-	dir := os.Getenv("GLOVO_CONFIG_DIR")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".glovo")
-	}
-	return filepath.Join(dir, "auth.json")
+	return filepath.Join(configDir(), "auth.json")
 }
 
 func (c *Client) loadAuth() *authSession {
@@ -92,9 +87,13 @@ func (c *Client) authedOnce(method, url string, extra map[string]string, body, o
 	req, _ := http.NewRequest(method, url, rdr)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Origin", webBase)
 	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range c.apiHeaders() {
+		req.Header.Set(k, v)
 	}
 	for k, v := range extra {
 		req.Header.Set(k, v)
@@ -119,77 +118,120 @@ func (c *Client) authedOnce(method, url string, extra map[string]string, body, o
 	return resp.StatusCode, nil
 }
 
-// LoginToken stores a refresh token pasted from a logged-in browser, then
-// exchanges it for an access token and the customer id. Endpoint shape is a
-// documented-shape placeholder pending reconciliation against a live capture.
+// LoginToken stores a refresh token pasted from a logged-in browser and
+// exchanges it for a session. The refresh response carries no customer id, so
+// it comes from the access token's own payload claim.
 func (c *Client) LoginToken(refreshToken string) error {
-	var resp struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		CustomerID   int64  `json:"customerId"`
-	}
-	status, err := c.doJSON("POST", c.apiBase+"/oauth/refresh",
-		map[string]string{"refreshToken": refreshToken, "grantType": "refresh_token"}, &resp)
+	resp, status, err := c.exchangeRefresh(refreshToken)
 	if err != nil {
 		return err
 	}
 	if status != 200 || resp.AccessToken == "" {
 		return fmt.Errorf("could not validate token (http %d) — copy a fresh glovo_refresh_token from your browser", status)
 	}
-	s := &authSession{AccessToken: resp.AccessToken, RefreshToken: refreshToken, CustomerID: resp.CustomerID}
-	if resp.RefreshToken != "" {
-		s.RefreshToken = resp.RefreshToken
+	return c.storeSession(resp.AccessToken, firstNonEmpty(resp.RefreshToken, refreshToken))
+}
+
+// tokenResponse is the session payload Glovo returns from /oauth/refresh and
+// from the 2FA validation, and nests under "access" on /oauth/token.
+type tokenResponse struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+}
+
+func (c *Client) exchangeRefresh(refreshToken string) (tokenResponse, int, error) {
+	var resp tokenResponse
+	status, err := c.doJSONH("POST", c.apiBase+"/oauth/refresh", c.apiHeaders(),
+		map[string]string{"refreshToken": refreshToken, "grantType": "refresh_token"}, &resp)
+	return resp, status, err
+}
+
+func (c *Client) storeSession(access, refresh string) error {
+	cid, err := decodeCustomerID(access)
+	if err != nil || cid == 0 {
+		return fmt.Errorf("couldn't read the customer id from the access token: %w", err)
 	}
-	c.saveAuth(s)
+	c.saveAuth(&authSession{AccessToken: access, RefreshToken: refresh, CustomerID: cid})
 	return nil
 }
 
+// TwoFactorRequired reports that Glovo answered the password login with a
+// verification challenge instead of a session: it has sent a code to the
+// account's phone, which ValidateTwoFactor exchanges for the session.
+type TwoFactorRequired struct {
+	Token     string
+	ExpiresIn int
+}
+
+func (e *TwoFactorRequired) Error() string {
+	return "Glovo sent a verification code to your phone"
+}
+
 // LoginPassword exchanges the user's own email + password for tokens via
-// Glovo's OAuth password grant (POST /oauth/token, live-captured from the web
-// login). The password is sent once and never stored — only the returned
-// tokens are. The customer id is read from the access-token JWT.
+// Glovo's OAuth password grant. The password is sent once and never stored —
+// only the returned tokens are. A device Glovo hasn't seen before gets a
+// TwoFactorRequired back rather than a session.
 func (c *Client) LoginPassword(email, password string) error {
-	body := map[string]string{"grantType": "password", "username": email, "password": password}
-	raw, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", c.apiBase+"/oauth/token", bytes.NewReader(raw))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-	for k, v := range map[string]string{
-		"glovo-api-version": "14", "glovo-app-platform": "web",
-		"glovo-app-type": "customer", "glovo-app-version": "v1.2413.0",
-		"glovo-app-context": "web", "glovo-app-development-state": "prod",
-		"glovo-language-code": "en",
-	} {
-		req.Header.Set(k, v)
+	var resp struct {
+		Access    tokenResponse `json:"access"`
+		TwoFactor *struct {
+			Token     string `json:"twoFactorToken"`
+			ExpiresIn int    `json:"expiresIn"`
+		} `json:"twoFactor"`
 	}
-	resp, err := c.http.Do(req)
+	headers, err := c.authHeaders()
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	rb, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if os.Getenv("GLOVO_DEBUG") != "" && resp.StatusCode != 200 {
-		fmt.Fprintf(os.Stderr, "glovo: POST /oauth/token -> %d\n%s\n", resp.StatusCode, string(rb))
+	body := map[string]string{"grantType": "password", "username": email, "password": password}
+	status, err := c.doJSONH("POST", c.apiBase+"/oauth/token", headers, body, &resp)
+	if err != nil {
+		return err
 	}
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return fmt.Errorf("login rejected (http %d) — check your email/password, or use: glovo login --access-token", resp.StatusCode)
+	if status == 401 || status == 403 {
+		return fmt.Errorf("login rejected (http %d) — check your email/password, or use: glovo login --access-token", status)
 	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("login failed: http %d", resp.StatusCode)
+	if status != 200 {
+		return fmt.Errorf("login failed: http %d", status)
 	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(rb, &m); err != nil {
-		return fmt.Errorf("login: couldn't parse token response: %w", err)
+	if resp.TwoFactor != nil && resp.TwoFactor.Token != "" {
+		return &TwoFactorRequired{Token: resp.TwoFactor.Token, ExpiresIn: resp.TwoFactor.ExpiresIn}
 	}
-	access := firstStringField(m, "accessToken", "access_token", "token")
-	if access == "" {
+	if resp.Access.AccessToken == "" {
 		return fmt.Errorf("login succeeded but no access token in the response")
 	}
-	refresh := firstStringField(m, "refreshToken", "refresh_token")
-	cid, _ := decodeCustomerID(access)
-	c.saveAuth(&authSession{AccessToken: access, RefreshToken: refresh, CustomerID: cid})
-	return nil
+	return c.storeSession(resp.Access.AccessToken, resp.Access.RefreshToken)
+}
+
+// ValidateTwoFactor completes a login that came back with a TwoFactorRequired,
+// exchanging the challenge token and the code Glovo sent for a session.
+func (c *Client) ValidateTwoFactor(twoFactorToken, code string) error {
+	var resp tokenResponse
+	headers, err := c.authHeaders()
+	if err != nil {
+		return err
+	}
+	body := map[string]string{"twoFactorToken": twoFactorToken, "code": code}
+	status, err := c.doJSONH("POST", c.apiBase+"/oauth/2fa/phone_verification/validate", headers, body, &resp)
+	if err != nil {
+		return err
+	}
+	if status == 400 || status == 401 {
+		return fmt.Errorf("that code wasn't accepted (http %d) — it may have expired", status)
+	}
+	if status != 200 || resp.AccessToken == "" {
+		return fmt.Errorf("verification failed: http %d", status)
+	}
+	return c.storeSession(resp.AccessToken, resp.RefreshToken)
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // firstStringField returns the first present key's value as a string (quotes
@@ -254,19 +296,17 @@ func decodeCustomerID(token string) (int64, error) {
 	return uid, nil
 }
 
-// refresh hits the token-refresh endpoint. The path and field names are a
-// documented-shape placeholder pending reconciliation against a live capture.
+// refresh swaps the stored refresh token for a new session. Glovo rotates the
+// refresh token on every call, so the new one has to replace the old.
 func (c *Client) refresh() error {
 	s := c.loadAuth()
 	if s == nil {
 		return fmt.Errorf("no session")
 	}
-	var resp struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
+	if s.RefreshToken == "" {
+		return fmt.Errorf("no refresh token stored — log in with: glovo login --email you@example.com")
 	}
-	status, err := c.doJSON("POST", c.apiBase+"/oauth/refresh",
-		map[string]string{"refreshToken": s.RefreshToken, "grantType": "refresh_token"}, &resp)
+	resp, status, err := c.exchangeRefresh(s.RefreshToken)
 	if err != nil {
 		return err
 	}

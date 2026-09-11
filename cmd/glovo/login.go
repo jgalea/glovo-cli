@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -21,7 +22,7 @@ func cmdLogin(args []string) error {
 	fs.BoolVar(&tokenMode, "token", false, "paste a glovo_refresh_token from your browser")
 	fs.BoolVar(&accessTokenMode, "access-token", false, "paste your current access token; the CLI derives your customer id from it")
 	fs.Int64Var(&customerID, "customer-id", 0, "override the customer id derived from --access-token")
-	_ = fs.Parse(args)
+	_ = parseArgs(fs, args)
 
 	cl := glovo.NewClient(stderrLogf)
 
@@ -32,7 +33,13 @@ func cmdLogin(args []string) error {
 			return err
 		}
 		if err := cl.LoginPassword(email, pw); err != nil {
-			return err
+			var challenge *glovo.TwoFactorRequired
+			if !errors.As(err, &challenge) {
+				return err
+			}
+			if err := completeTwoFactor(cl, challenge); err != nil {
+				return err
+			}
 		}
 	case accessTokenMode:
 		token, err := readTokenInput("Access token: ")
@@ -73,4 +80,19 @@ func readTokenInput(prompt string) (string, error) {
 	}
 	b, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	return strings.TrimSpace(b), nil
+}
+
+// completeTwoFactor finishes a login Glovo answered with a verification
+// challenge: it has texted a code to the account's phone, and that code plus
+// the challenge token buy the session.
+func completeTwoFactor(cl *glovo.Client, challenge *glovo.TwoFactorRequired) error {
+	fmt.Fprintf(os.Stderr, "Glovo sent a verification code to your phone (valid for %ds).\n", challenge.ExpiresIn)
+	code, err := readTokenInput("Code: ")
+	if err != nil {
+		return err
+	}
+	if code == "" {
+		return fmt.Errorf("no code provided")
+	}
+	return cl.ValidateTwoFactor(challenge.Token, code)
 }

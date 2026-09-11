@@ -70,9 +70,11 @@ func TestLoginAccessTokenBadTokenNoIdErrors(t *testing.T) {
 func TestLoginToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GLOVO_CONFIG_DIR", dir)
+	// The refresh response carries no customer id: it comes from the access
+	// token's own payload claim.
+	token := fakeJWT(`"{\"userId\":42,\"deviceId\":\"d\",\"grantType\":\"g\"}"`)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// refresh exchange returns access token + customer id
-		_, _ = w.Write([]byte(`{"accessToken":"AT","refreshToken":"RT2","customerId":42}`))
+		_, _ = w.Write([]byte(`{"accessToken":"` + token + `","refreshToken":"RT2"}`))
 	}))
 	defer srv.Close()
 	c := NewClient(nil)
@@ -81,7 +83,7 @@ func TestLoginToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := c.loadAuth()
-	if s == nil || s.AccessToken != "AT" || s.CustomerID != 42 {
+	if s == nil || s.AccessToken != token || s.CustomerID != 42 || s.RefreshToken != "RT2" {
 		t.Fatalf("session = %+v", s)
 	}
 }

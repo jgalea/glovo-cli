@@ -14,8 +14,8 @@ func (c *Client) Search(query string, lat, lng float64, cityCode, countryCode st
 		return nil, fmt.Errorf("search needs your Glovo account — run: glovo login")
 	}
 	u := fmt.Sprintf("%s/v1/web/store_wall/search?searchQuery=%s", c.apiBase, url.QueryEscape(query))
-	extra := storeWallHeaders(lat, lng, cityCode, countryCode)
-	reqBody := map[string]any{"searchContext": map[string]any{"searchId": "00000000-0000-4000-8000-000000000000"}}
+	extra := c.storeWallHeaders(lat, lng, cityCode, countryCode)
+	reqBody := map[string]any{"searchContext": map[string]any{"searchId": newUUID()}}
 
 	var raw json.RawMessage
 	status, err := c.doAuthedJSONH("POST", u, extra, reqBody, &raw)
@@ -32,17 +32,10 @@ func (c *Client) Search(query string, lat, lng float64, cityCode, countryCode st
 	return stores, nil
 }
 
-// storeWallHeaders builds the glovo-* routing + delivery-location headers the
-// store_wall API requires (captured from the web client).
-func storeWallHeaders(lat, lng float64, cityCode, countryCode string) map[string]string {
+// locationHeaders builds the glovo-* routing + delivery-location headers that
+// tell the API where the order would be delivered.
+func locationHeaders(lat, lng float64, cityCode, countryCode string) map[string]string {
 	return map[string]string{
-		"glovo-api-version":                 "14",
-		"glovo-app-platform":                "web",
-		"glovo-app-type":                    "customer",
-		"glovo-app-version":                 "v1.2413.0",
-		"glovo-app-context":                 "web",
-		"glovo-app-development-state":       "prod",
-		"glovo-language-code":               "en",
 		"glovo-location-city-code":          cityCode,
 		"glovo-location-country-code":       countryCode,
 		"glovo-delivery-location-latitude":  strconv.FormatFloat(lat, 'f', -1, 64),
@@ -50,6 +43,17 @@ func storeWallHeaders(lat, lng float64, cityCode, countryCode string) map[string
 		"glovo-delivery-location-accuracy":  "0",
 		"glovo-delivery-location-timestamp": strconv.FormatInt(time.Now().UnixMilli(), 10),
 	}
+}
+
+// storeWallHeaders is the identity + session header set plus the delivery
+// location. Dropping any of the identity headers (the perseus ones included)
+// makes the gateway answer 503 "no available server" rather than a 4xx.
+func (c *Client) storeWallHeaders(lat, lng float64, cityCode, countryCode string) map[string]string {
+	h := c.apiHeaders()
+	for k, v := range locationHeaders(lat, lng, cityCode, countryCode) {
+		h[k] = v
+	}
+	return h
 }
 
 type storeCard struct {
