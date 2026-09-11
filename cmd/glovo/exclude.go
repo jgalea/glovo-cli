@@ -14,6 +14,9 @@ import (
 // anything else worth skipping, so the list is the caller's to keep: --exclude
 // for one search, ~/.glovo/exclude.txt for the standing one.
 func excludeList(flagValue string) []string {
+	if strings.EqualFold(strings.TrimSpace(flagValue), "none") {
+		return nil // show everything, standing list and all
+	}
 	if strings.TrimSpace(flagValue) != "" {
 		var out []string
 		for _, p := range strings.Split(flagValue, ",") {
@@ -76,5 +79,5 @@ func applyExcludes(stores []glovo.Store, patterns []string) ([]glovo.Store, int)
 }
 
 func excludeUsage() string {
-	return fmt.Sprintf("comma-separated names to hide, e.g. --exclude %q (defaults to ~/.glovo/exclude.txt)", "domino,pizza hut")
+	return fmt.Sprintf("comma-separated names to hide, e.g. --exclude %q; \"none\" shows everything (defaults to ~/.glovo/exclude.txt)", "domino,pizza hut")
 }

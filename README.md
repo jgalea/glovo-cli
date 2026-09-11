@@ -51,6 +51,8 @@ Every command needs to know where you are ordering from: pass `--lat`/`--lng`, s
 
 `search` calls Glovo's authenticated store-search API and needs `glovo login` first. `menu <store-slug>` needs no account.
 
+`search --exclude "domino,pizza hut"` hides stores by name, for the places you never want to see. Keep a standing list in `~/.glovo/exclude.txt`, one name per line, and pass `--exclude none` for a search that shows everything. Glovo publishes nothing that marks a store as a chain or a ghost kitchen, so the list is yours to keep. Whatever is hidden is reported on stderr, so a short result list is never quietly a filtered one.
+
 ## Auth
 
 `glovo login` supports three paths:

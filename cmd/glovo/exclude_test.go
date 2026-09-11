@@ -51,6 +51,17 @@ func TestExcludeListPrefersTheFlagOverTheFile(t *testing.T) {
 	}
 }
 
+func TestExcludeListNoneIgnoresTheStandingFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GLOVO_CONFIG_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "exclude.txt"), []byte("Telepizza\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := excludeList("none"); len(got) != 0 {
+		t.Errorf("got %v, want nothing", got)
+	}
+}
+
 func TestExcludeListIsEmptyWithoutAFile(t *testing.T) {
 	t.Setenv("GLOVO_CONFIG_DIR", t.TempDir())
 	if got := excludeList(""); len(got) != 0 {
