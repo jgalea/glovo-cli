@@ -21,6 +21,15 @@ func storeLine(s glovo.Store) string {
 	fmt.Fprintf(&b, "[%d] %s", s.ID, s.Name)
 	if s.Rating > 0 {
 		fmt.Fprintf(&b, "  %d%%", s.Rating)
+		if s.RatingCount > 0 {
+			fmt.Fprintf(&b, " (%d)", s.RatingCount)
+		}
+	}
+	if s.ETAMinutesHigh > 0 {
+		fmt.Fprintf(&b, "  %d-%d min", s.ETAMinutesLow, s.ETAMinutesHigh)
+	}
+	if s.Currency != "" {
+		fmt.Fprintf(&b, "  %.2f %s", s.DeliveryFee, s.Currency)
 	}
 	if !s.Open {
 		if s.ScheduledOpenAt != "" {

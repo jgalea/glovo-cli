@@ -5,7 +5,8 @@ type Store struct {
 	ID              int64   `json:"id"`
 	Slug            string  `json:"slug"`
 	Name            string  `json:"name"`
-	Rating          int     `json:"rating,omitempty"` // percent, e.g. 97
+	Rating          int     `json:"rating,omitempty"`      // percent, e.g. 97
+	RatingCount     int     `json:"ratingCount,omitempty"` // orders the rating is based on
 	ETAMinutesLow   int     `json:"etaMinutesLow,omitempty"`
 	ETAMinutesHigh  int     `json:"etaMinutesHigh,omitempty"`
 	DeliveryFee     float64 `json:"deliveryFee,omitempty"`

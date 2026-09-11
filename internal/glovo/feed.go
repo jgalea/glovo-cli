@@ -114,6 +114,7 @@ func parseStoreWall(body []byte) []Store {
 		s := Store{Slug: card.Data.Slug, Name: card.Data.Title.Text.Text}
 		s.ID, _ = strconv.ParseInt(ev["shopId"], 10, 64)
 		s.Rating = parsePercent(ev["shopRating"])
+		s.RatingCount = atoiSafe(ev["numberOfRatedOrders"])
 		s.ETAMinutesLow = atoiSafe(ev["promisedDeliveryTimeRangeLower"])
 		s.ETAMinutesHigh = atoiSafe(ev["promisedDeliveryTimeRangeUpper"])
 		s.DeliveryFee, _ = strconv.ParseFloat(ev["shopDeliveryFee"], 64)
